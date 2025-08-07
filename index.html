@@ -43,6 +43,23 @@
             z-index: 100;
             white-space: nowrap;
         }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 20px;
+            background-color: #2d3748;
+            color: white;
+            border-radius: 8px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s, bottom 0.5s;
+        }
+        .toast.show {
+            opacity: 1;
+            bottom: 40px;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -129,6 +146,8 @@
             const [data, setData] = useState(getInitialData);
             const [route, setRoute] = useState(window.location.hash);
             const [newEventName, setNewEventName] = useState('');
+            const [toastMessage, setToastMessage] = useState('');
+            const [importModalOpen, setImportModalOpen] = useState(false);
 
             useEffect(() => {
                 const handleHashChange = () => setRoute(window.location.hash);
@@ -157,6 +176,13 @@
             }, []);
 
             useEffect(() => { saveData(data); }, [data]);
+            
+            useEffect(() => {
+                if (toastMessage) {
+                    const timer = setTimeout(() => setToastMessage(''), 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [toastMessage]);
 
             const handleAddEvent = () => {
                 if (newEventName.trim()) {
@@ -168,6 +194,59 @@
                     }));
                     setNewEventName('');
                 }
+            };
+            
+            const handleImport = (csvContent) => {
+                const lines = csvContent.split('\n').filter(line => line.trim() !== '');
+                if (lines.length < 2) {
+                    setToastMessage("Import failed: CSV is empty or has no data.");
+                    return;
+                }
+
+                const header = lines[0].trim().toLowerCase();
+                if (header !== 'event,timestampiso') {
+                    setToastMessage("Import failed: Invalid CSV header. Expected 'Event,TimestampISO'.");
+                    return;
+                }
+
+                const firstLine = lines[1].trim();
+                const firstCommaIndex = firstLine.indexOf(',');
+                let baseEventName = firstLine.substring(0, firstCommaIndex);
+                if (baseEventName.startsWith('"') && baseEventName.endsWith('"')) {
+                    baseEventName = baseEventName.slice(1, -1).replace(/""/g, '"');
+                }
+                
+                let finalEventName = baseEventName;
+                let version = 2;
+                
+                while (data.events.some(event => event.name === finalEventName)) {
+                    finalEventName = `${baseEventName} (v${version})`;
+                    version++;
+                }
+
+                const newEvent = { id: Date.now(), name: finalEventName };
+                const newIncrements = [];
+
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    const lastCommaIndex = line.lastIndexOf(',');
+                    if (lastCommaIndex > -1) {
+                        const isoTimestamp = line.substring(lastCommaIndex + 1);
+                        const timestamp = new Date(isoTimestamp).getTime();
+                        if (!isNaN(timestamp)) {
+                            newIncrements.push({ id: Date.now() + i, timestamp });
+                        }
+                    }
+                }
+                
+                setData(prev => ({
+                    ...prev,
+                    events: [...prev.events, newEvent],
+                    increments: { ...prev.increments, [newEvent.id]: newIncrements }
+                }));
+
+                setToastMessage(`Successfully imported "${finalEventName}" with ${newIncrements.length} entries.`);
+                setImportModalOpen(false);
             };
 
             const updateEventData = (eventId, newIncrements) => {
@@ -201,6 +280,7 @@
                             onUpdate={(newIncrements) => updateEventData(selectedEvent.id, newIncrements)}
                             onDelete={() => deleteEvent(selectedEvent.id)}
                             onBack={() => window.location.hash = ''}
+                            setToast={setToastMessage}
                         />
                     );
                 } else {
@@ -209,9 +289,12 @@
             } else {
                 currentView = (
                     <div>
-                        <header className="mb-6">
-                            <h1 className="text-4xl font-bold text-gray-800">Event Tracker</h1>
-                            <p className="text-gray-500">A simple PWA to track your habits.</p>
+                        <header className="mb-6 flex justify-between items-center">
+                            <div>
+                                <h1 className="text-4xl font-bold text-gray-800">Event Tracker</h1>
+                                <p className="text-gray-500">A simple PWA to track your habits.</p>
+                            </div>
+                            <button onClick={() => setImportModalOpen(true)} className="bg-indigo-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-600">Import</button>
                         </header>
                         <form onSubmit={(e) => { e.preventDefault(); handleAddEvent(); }} className="flex gap-2 mb-6">
                             <input
@@ -238,7 +321,13 @@
                 );
             }
 
-            return <div className="max-w-4xl mx-auto p-4 md:p-6">{currentView}</div>;
+            return (
+                <div className="max-w-4xl mx-auto p-4 md:p-6">
+                    {currentView}
+                    <div className={`toast ${toastMessage ? 'show' : ''}`}>{toastMessage}</div>
+                    {importModalOpen && <ImportModal onClose={() => setImportModalOpen(false)} onImport={handleImport} />}
+                </div>
+            );
         };
 
         // --- Child Components ---
@@ -323,9 +412,10 @@
             );
         };
 
-        const EventDetail = ({ event, increments, onUpdate, onDelete, onBack }) => {
+        const EventDetail = ({ event, increments, onUpdate, onDelete, onBack, setToast }) => {
             const [activeView, setActiveView] = useState('calendar');
             const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
+            const [exportModalOpen, setExportModalOpen] = useState(false);
 
             const { startDate, lastTriggerDate } = useMemo(() => {
                 if (!increments || increments.length === 0) return { startDate: null, lastTriggerDate: null };
@@ -376,7 +466,10 @@
                 <div className="bg-white p-6 rounded-lg shadow-lg">
                     <div className="flex justify-between items-center mb-4">
                         <a href="#" onClick={onBack} className="text-green-600 hover:underline">&larr; Back</a>
-                        <button onClick={requestEventDelete} className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600">Delete Event</button>
+                        <div className="flex gap-2">
+                            <button onClick={() => setExportModalOpen(true)} className="bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600">Export</button>
+                            <button onClick={requestEventDelete} className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600">Delete Event</button>
+                        </div>
                     </div>
                     <h1 className="text-4xl font-bold text-gray-800">{event.name}</h1>
                     <div className="text-sm text-gray-500 mb-4 space-y-1">
@@ -411,6 +504,14 @@
                                 setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
                             }}
                             onCancel={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })}
+                        />
+                    )}
+                    {exportModalOpen && (
+                        <ExportModal
+                            event={event}
+                            increments={increments}
+                            onClose={() => setExportModalOpen(false)}
+                            setToast={setToast}
                         />
                     )}
                 </div>
@@ -678,6 +779,111 @@
                             <button onClick={onCancel} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
                             <button onClick={onConfirm} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">Delete</button>
                         </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        const ExportModal = ({ event, increments, onClose, setToast }) => {
+            const handleExportCSV = () => {
+                let csvContent = "data:text/csv;charset=utf-8,";
+                csvContent += "Event,TimestampISO\r\n"; // Header
+                increments.forEach(inc => {
+                    const d = new Date(inc.timestamp);
+                    const eventNameQuoted = `"${event.name.replace(/"/g, '""')}"`;
+                    const row = [eventNameQuoted, d.toISOString()].join(",");
+                    csvContent += row + "\r\n";
+                });
+
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `${event.name.replace(/\s+/g, '_')}_export.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                onClose();
+            };
+
+            const handleCopyToSheets = () => {
+                let tsvContent = "Event\tTimestampISO\r\n"; // Header with tabs
+                increments.forEach(inc => {
+                    const d = new Date(inc.timestamp);
+                    const row = [event.name, d.toISOString()].join("\t");
+                    tsvContent += row + "\r\n";
+                });
+                
+                const textArea = document.createElement("textarea");
+                textArea.value = tsvContent;
+                textArea.style.position = "fixed";
+                textArea.style.top = "0";
+                textArea.style.left = "0";
+                textArea.style.width = "2em";
+                textArea.style.height = "2em";
+                textArea.style.padding = "0";
+                textArea.style.border = "none";
+                textArea.style.outline = "none";
+                textArea.style.boxShadow = "none";
+                textArea.style.background = "transparent";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        setToast("Data copied to clipboard. Paste into Google Sheets.");
+                        window.open('https://sheets.new', '_blank');
+                    } else {
+                        setToast("Failed to copy data.");
+                    }
+                } catch (err) {
+                    console.error('Could not copy text: ', err);
+                    setToast("Failed to copy data.");
+                }
+
+                document.body.removeChild(textArea);
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-2xl font-bold mb-4">Export Data</h2>
+                        <div className="space-y-3">
+                            <button onClick={handleExportCSV} className="w-full px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-semibold">Download as CSV</button>
+                            <button onClick={handleCopyToSheets} className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold">Copy for Google Sheets</button>
+                        </div>
+                        <button onClick={onClose} className="w-full mt-6 px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const ImportModal = ({ onClose, onImport }) => {
+            const handleFileChange = (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        onImport(e.target.result);
+                    };
+                    reader.readAsText(file);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-2xl font-bold mb-4">Import from CSV</h2>
+                        <p className="text-gray-600 mb-4">Select a CSV file with the columns: "Event", "TimestampISO".</p>
+                        <input
+                            type="file"
+                            accept=".csv"
+                            onChange={handleFileChange}
+                            className="w-full p-2 border rounded-lg"
+                        />
+                        <button onClick={onClose} className="w-full mt-6 px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
                     </div>
                 </div>
             );

@@ -99,6 +99,34 @@
             const [view, setView] = useState({ screen: 'home' });
             const [newEventName, setNewEventName] = useState('');
 
+            // This effect runs once on app load to handle any shortcut actions
+            useEffect(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const action = urlParams.get('action');
+                const eventId = parseInt(urlParams.get('event'), 10);
+
+                if (action === 'increment' && eventId) {
+                    // Find the event and add an increment
+                    setData(prevData => {
+                        const incrementsForEvent = prevData.increments[eventId] || [];
+                        const newIncrements = [...incrementsForEvent, { id: Date.now(), timestamp: Date.now() }];
+                        const newData = {
+                            ...prevData,
+                            increments: {
+                                ...prevData.increments,
+                                [eventId]: newIncrements
+                            }
+                        };
+                        saveData(newData); // Save immediately
+                        return newData;
+                    });
+                    
+                    // Clean the URL so a refresh doesn't trigger it again
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            }, []);
+
+
             useEffect(() => { saveData(data); }, [data]);
 
             const handleAddEvent = () => {
@@ -121,7 +149,6 @@
             };
 
             const deleteEvent = (eventId) => {
-                // The confirmation is now handled in the modal, so we can delete directly.
                 setData(prev => {
                     const newEvents = prev.events.filter(e => e.id !== eventId);
                     const newIncrements = { ...prev.increments };

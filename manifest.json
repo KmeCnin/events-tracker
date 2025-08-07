@@ -16,5 +16,14 @@
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#4CAF50",
-  "background_color": "#ffffff"
+  "background_color": "#ffffff",
+  "shortcuts": [
+    {
+      "name": "Increment Anti-inflammatoires",
+      "short_name": "Anti-inflammatoires",
+      "description": "Trigger the 'Anti-inflammatoires' event",
+      "url": "/?action=increment&event=1",
+      "icons": [{ "src": "icon-192x192.png", "sizes": "192x192" }]
+    }
+  ]
 }

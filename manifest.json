@@ -3,6 +3,11 @@
   "name": "Event Tracker PWA",
   "icons": [
     {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
       "src": "icon-192x192.png",
       "type": "image/png",
       "sizes": "192x192"
@@ -23,7 +28,7 @@
       "short_name": "Anti-inflammatoires",
       "description": "Trigger the 'Anti-inflammatoires' event",
       "url": "/?action=increment&event=1",
-      "icons": [{ "src": "icon-192x192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
     }
   ]
 }

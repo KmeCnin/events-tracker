@@ -102,8 +102,8 @@
         };
 
         const generateFakeData = () => {
-            const eventName = "Anti-inflammatoires";
-            const event = { id: 1, name: eventName };
+            const eventName = "Test";
+            const event = { id: Date.now(), name: eventName };
             const increments = [];
 
             const now = Date.now();
@@ -117,7 +117,7 @@
                 const randomOffset = (Math.random() * 2 - 1) * randomness;
                 const triggerTime = currentTime + randomOffset;
                 if (triggerTime > now) break;
-                increments.push({ id: now + i, timestamp: triggerTime });
+                increments.push({ id: Date.now() + i, timestamp: triggerTime });
             }
 
             return {
@@ -249,6 +249,33 @@
                 setImportModalOpen(false);
             };
 
+            const handleGenerateTestData = () => {
+                setData(prevData => {
+                    const testData = generateFakeData();
+                    let baseEventName = testData.events[0].name; // "Test"
+                    const newTestIncrements = testData.increments[testData.events[0].id];
+
+                    let finalEventName = baseEventName;
+                    let version = 2;
+                    while (prevData.events.some(event => event.name === finalEventName)) {
+                        finalEventName = `${baseEventName} (v${version})`;
+                        version++;
+                    }
+                    
+                    const newTestEvent = { id: Date.now(), name: finalEventName };
+
+                    return {
+                        ...prevData,
+                        events: [...prevData.events, newTestEvent],
+                        increments: {
+                            ...prevData.increments,
+                            [newTestEvent.id]: newTestIncrements
+                        }
+                    };
+                });
+                setToastMessage("New test event has been generated.");
+            };
+
             const updateEventData = (eventId, newIncrements) => {
                 setData(prev => ({
                     ...prev,
@@ -294,7 +321,10 @@
                                 <h1 className="text-4xl font-bold text-gray-800">Event Tracker</h1>
                                 <p className="text-gray-500">A simple PWA to track your habits.</p>
                             </div>
-                            <button onClick={() => setImportModalOpen(true)} className="bg-indigo-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-600">Import</button>
+                            <div className="flex gap-2">
+                                <button onClick={handleGenerateTestData} className="bg-gray-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-gray-600">Test</button>
+                                <button onClick={() => setImportModalOpen(true)} className="bg-indigo-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-600">Import</button>
+                            </div>
                         </header>
                         <form onSubmit={(e) => { e.preventDefault(); handleAddEvent(); }} className="flex gap-2 mb-6">
                             <input

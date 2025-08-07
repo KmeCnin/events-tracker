@@ -51,8 +51,38 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
-        // --- LocalStorage Database Helpers ---
+        // --- Helpers ---
         const DB_KEY = 'eventTrackerData';
+
+        const formatRelativeTime = (timestamp) => {
+            const now = new Date();
+            const past = new Date(timestamp);
+            const seconds = Math.floor((now - past) / 1000);
+
+            if (seconds < 2) return "just now";
+            if (seconds < 60) return `${seconds} seconds ago`;
+
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+
+            const days = Math.floor(hours / 24);
+            if (days < 7) {
+                if (days === 1) return "yesterday";
+                return `${days} days ago`;
+            }
+
+            const weeks = Math.floor(days / 7);
+            if (weeks < 5) return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
+
+            const months = Math.floor(days / 30.44);
+            if (months < 12) return `${months} month${months > 1 ? 's' : ''} ago`;
+
+            const years = Math.floor(days / 365.25);
+            return `${years} year${years > 1 ? 's' : ''} ago`;
+        };
 
         const generateFakeData = () => {
             const eventName = "Anti-inflammatoires";
@@ -100,16 +130,12 @@
             const [route, setRoute] = useState(window.location.hash);
             const [newEventName, setNewEventName] = useState('');
 
-            // Effect to handle URL hash changes for routing
             useEffect(() => {
-                const handleHashChange = () => {
-                    setRoute(window.location.hash);
-                };
+                const handleHashChange = () => setRoute(window.location.hash);
                 window.addEventListener('hashchange', handleHashChange);
                 return () => window.removeEventListener('hashchange', handleHashChange);
             }, []);
 
-            // This effect runs once on app load to handle any shortcut actions
             useEffect(() => {
                 const urlParams = new URLSearchParams(window.location.search);
                 const action = urlParams.get('action');
@@ -158,10 +184,9 @@
                     delete newIncrements[eventId];
                     return { events: newEvents, increments: newIncrements };
                 });
-                window.location.hash = ''; // Go back to home after delete
+                window.location.hash = '';
             };
 
-            // --- Routing Logic ---
             let currentView;
             const routeParts = route.replace(/^#\/?|\/$/g, '').split('/');
             
@@ -179,7 +204,6 @@
                         />
                     );
                 } else {
-                    // Event not found, redirect to home
                     window.location.hash = '';
                 }
             } else {
@@ -214,11 +238,7 @@
                 );
             }
 
-            return (
-                <div className="max-w-4xl mx-auto p-4 md:p-6">
-                    {currentView}
-                </div>
-            );
+            return <div className="max-w-4xl mx-auto p-4 md:p-6">{currentView}</div>;
         };
 
         // --- Child Components ---
@@ -229,25 +249,39 @@
                 onUpdate([...increments, { id: Date.now(), timestamp: Date.now() }]);
             };
             
-            const startDate = useMemo(() => {
-                if (!increments || increments.length === 0) return null;
-                const firstTimestamp = Math.min(...increments.map(inc => inc.timestamp));
-                return new Date(firstTimestamp).toLocaleDateString();
+            const { startDate, lastTriggerDate } = useMemo(() => {
+                if (!increments || increments.length === 0) return { startDate: null, lastTriggerDate: null };
+                const timestamps = increments.map(inc => inc.timestamp);
+                const firstTimestamp = Math.min(...timestamps);
+                const lastTimestamp = Math.max(...timestamps);
+                return {
+                    startDate: {
+                        date: new Date(firstTimestamp).toLocaleDateString(),
+                        relative: formatRelativeTime(firstTimestamp)
+                    },
+                    lastTriggerDate: {
+                        date: new Date(lastTimestamp).toLocaleDateString(),
+                        relative: formatRelativeTime(lastTimestamp)
+                    }
+                };
             }, [increments]);
 
             return (
                 <div onClick={onSelect} className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center cursor-pointer hover:shadow-lg transition-shadow">
-                    <div>
+                    <div className="flex-grow">
                         <h2 className="text-xl font-semibold text-gray-700">{event.name}</h2>
-                        {startDate && (
-                            <p className="text-xs text-gray-500 mt-1">
-                                Tracking since: <span className="font-semibold">{startDate}</span>
-                            </p>
-                        )}
+                        <div className="text-xs text-gray-500 mt-1 space-y-1">
+                            {startDate && (
+                                <p>Since: <span className="font-semibold">{startDate.date}</span> ({startDate.relative})</p>
+                            )}
+                            {lastTriggerDate && (
+                                <p>Last: <span className="font-semibold">{lastTriggerDate.date}</span> ({lastTriggerDate.relative})</p>
+                            )}
+                        </div>
                         <p className="text-3xl font-bold text-green-600 mt-2">{increments.length}</p>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <button onClick={handleIncrement} className="bg-green-500 text-white w-20 h-20 rounded-full flex items-center justify-center text-4xl font-bold hover:bg-green-600 transition-colors">+</button>
+                    <div className="flex items-center gap-3 pl-4">
+                        <button onClick={handleIncrement} className="bg-green-500 text-white w-20 h-20 rounded-full flex items-center justify-center text-4xl font-bold hover:bg-green-600 transition-colors flex-shrink-0">+</button>
                     </div>
                 </div>
             );
@@ -282,36 +316,37 @@
 
             return (
                 <div className="grid grid-cols-3 gap-2 mb-6 text-center">
-                    <div className="bg-green-100 p-2 rounded-lg">
-                        <div className="text-xl font-bold text-green-800">{stats.total}</div>
-                        <div className="text-xs text-green-600">Total</div>
-                    </div>
-                    <div className="bg-blue-100 p-2 rounded-lg">
-                        <div className="text-xl font-bold text-blue-800">{stats.avgPerMonth}</div>
-                        <div className="text-xs text-blue-600">Avg/Month</div>
-                    </div>
-                    <div className="bg-yellow-100 p-2 rounded-lg">
-                        <div className="text-xl font-bold text-yellow-800">{stats.avgTimeBetween}</div>
-                        <div className="text-xs text-yellow-600">Avg Between</div>
-                    </div>
+                    <div className="bg-green-100 p-2 rounded-lg"><div className="text-xl font-bold text-green-800">{stats.total}</div><div className="text-xs text-green-600">Total</div></div>
+                    <div className="bg-blue-100 p-2 rounded-lg"><div className="text-xl font-bold text-blue-800">{stats.avgPerMonth}</div><div className="text-xs text-blue-600">Avg/Month</div></div>
+                    <div className="bg-yellow-100 p-2 rounded-lg"><div className="text-xl font-bold text-yellow-800">{stats.avgTimeBetween}</div><div className="text-xs text-yellow-600">Avg Between</div></div>
                 </div>
             );
         };
 
         const EventDetail = ({ event, increments, onUpdate, onDelete, onBack }) => {
-            const [activeView, setActiveView] = useState('chart');
+            const [activeView, setActiveView] = useState('calendar');
             const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
-            const startDate = useMemo(() => {
-                if (!increments || increments.length === 0) return null;
-                const firstTimestamp = Math.min(...increments.map(inc => inc.timestamp));
-                return new Date(firstTimestamp).toLocaleDateString();
+            const { startDate, lastTriggerDate } = useMemo(() => {
+                if (!increments || increments.length === 0) return { startDate: null, lastTriggerDate: null };
+                const timestamps = increments.map(inc => inc.timestamp);
+                const firstTimestamp = Math.min(...timestamps);
+                const lastTimestamp = Math.max(...timestamps);
+                return {
+                    startDate: {
+                        date: new Date(firstTimestamp).toLocaleDateString(),
+                        relative: formatRelativeTime(firstTimestamp)
+                    },
+                    lastTriggerDate: {
+                        date: new Date(lastTimestamp).toLocaleDateString(),
+                        relative: formatRelativeTime(lastTimestamp)
+                    }
+                };
             }, [increments]);
 
             const handleDayUpdate = (date, newDayIncrements) => {
                 const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
                 const endOfDay = startOfDay + 24 * 60 * 60 * 1000 -1;
-
                 const otherIncrements = increments.filter(inc => inc.timestamp < startOfDay || inc.timestamp > endOfDay);
                 onUpdate([...otherIncrements, ...newDayIncrements]);
             };
@@ -344,11 +379,14 @@
                         <button onClick={requestEventDelete} className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600">Delete Event</button>
                     </div>
                     <h1 className="text-4xl font-bold text-gray-800">{event.name}</h1>
-                    {startDate && (
-                        <p className="text-sm text-gray-500 mb-4">
-                            Tracking since: <span className="font-semibold">{startDate}</span>
-                        </p>
-                    )}
+                    <div className="text-sm text-gray-500 mb-4 space-y-1">
+                        {startDate && (
+                            <p>Tracking since: <span className="font-semibold">{startDate.date}</span> ({startDate.relative})</p>
+                        )}
+                        {lastTriggerDate && (
+                            <p>Last trigger: <span className="font-semibold">{lastTriggerDate.date}</span> ({lastTriggerDate.relative})</p>
+                        )}
+                    </div>
                     
                     <Statistics increments={increments} />
 

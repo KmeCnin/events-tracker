@@ -227,10 +227,6 @@
                 e.stopPropagation();
                 onUpdate([...increments, { id: Date.now(), timestamp: Date.now() }]);
             };
-            const handleRevert = (e) => {
-                e.stopPropagation();
-                if (increments.length > 0) onUpdate(increments.slice(0, -1));
-            };
             
             const startDate = useMemo(() => {
                 if (!increments || increments.length === 0) return null;
@@ -250,7 +246,6 @@
                         <p className="text-3xl font-bold text-green-600 mt-2">{increments.length}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <button onClick={handleRevert} className="bg-yellow-400 text-white w-14 h-14 rounded-full flex items-center justify-center text-3xl font-bold hover:bg-yellow-500 transition-colors disabled:bg-gray-300" disabled={increments.length === 0}>-</button>
                         <button onClick={handleIncrement} className="bg-green-500 text-white w-20 h-20 rounded-full flex items-center justify-center text-4xl font-bold hover:bg-green-600 transition-colors">+</button>
                     </div>
                 </div>
@@ -295,7 +290,7 @@
 
         const EventDetail = ({ event, increments, onUpdate, onDelete, onBack }) => {
             const [activeView, setActiveView] = useState('chart');
-            const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+            const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
             const startDate = useMemo(() => {
                 if (!increments || increments.length === 0) return null;
@@ -311,11 +306,32 @@
                 onUpdate([...otherIncrements, ...newDayIncrements]);
             };
 
+            const requestEventDelete = () => {
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Delete Event',
+                    message: `Are you sure you want to permanently delete "${event.name}" and all its data? This action cannot be undone.`,
+                    onConfirm: () => onDelete()
+                });
+            };
+
+            const requestIncrementDelete = (incrementToDelete) => {
+                setConfirmModal({
+                    isOpen: true,
+                    title: 'Delete Entry',
+                    message: `Are you sure you want to delete the entry from ${new Date(incrementToDelete.timestamp).toLocaleString()}?`,
+                    onConfirm: () => {
+                        const newIncrements = increments.filter(inc => inc.id !== incrementToDelete.id);
+                        onUpdate(newIncrements);
+                    }
+                });
+            };
+
             return (
                 <div className="bg-white p-6 rounded-lg shadow-lg">
                     <div className="flex justify-between items-center mb-4">
                         <a href="#" onClick={onBack} className="text-green-600 hover:underline">&larr; Back</a>
-                        <button onClick={() => setDeleteModalOpen(true)} className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600">Delete Event</button>
+                        <button onClick={requestEventDelete} className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600">Delete Event</button>
                     </div>
                     <h1 className="text-4xl font-bold text-gray-800">{event.name}</h1>
                     {startDate && (
@@ -336,16 +352,17 @@
                     
                     {activeView === 'chart' && <ChartView increments={increments} />}
                     {activeView === 'calendar' && <CalendarView increments={increments} onDayUpdate={handleDayUpdate} />}
-                    {activeView === 'list' && <ListView increments={increments} />}
+                    {activeView === 'list' && <ListView increments={increments} onIncrementDeleteRequest={requestIncrementDelete} />}
                     
-                    {deleteModalOpen && (
-                        <DeleteConfirmModal
-                            eventName={event.name}
+                    {confirmModal.isOpen && (
+                        <ConfirmationModal
+                            title={confirmModal.title}
+                            message={confirmModal.message}
                             onConfirm={() => {
-                                onDelete();
-                                setDeleteModalOpen(false);
+                                confirmModal.onConfirm();
+                                setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null });
                             }}
-                            onCancel={() => setDeleteModalOpen(false)}
+                            onCancel={() => setConfirmModal({ isOpen: false, title: '', message: '', onConfirm: null })}
                         />
                     )}
                 </div>
@@ -436,7 +453,7 @@
             );
         };
 
-        const ListView = ({ increments }) => {
+        const ListView = ({ increments, onIncrementDeleteRequest }) => {
             const groupedIncrements = useMemo(() => {
                 const groups = {};
                 const sorted = [...increments].sort((a, b) => b.timestamp - a.timestamp);
@@ -461,8 +478,17 @@
                             <div className="space-y-2">
                                 {groupIncrements.map(inc => (
                                     <div key={inc.id} className="bg-gray-100 p-3 rounded-md flex justify-between items-center">
-                                        <span className="font-semibold">{new Date(inc.timestamp).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric' })}</span>
-                                        <span className="text-gray-600">{new Date(inc.timestamp).toLocaleTimeString()}</span>
+                                        <div>
+                                            <span className="font-semibold">{new Date(inc.timestamp).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric' })}</span>
+                                            <span className="text-gray-600 ml-4">{new Date(inc.timestamp).toLocaleTimeString()}</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => onIncrementDeleteRequest(inc)}
+                                            className="text-red-500 font-bold text-xl hover:text-red-700 w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-100 transition-colors"
+                                            aria-label="Delete this entry"
+                                        >
+                                            &times;
+                                        </button>
                                     </div>
                                 ))}
                             </div>
@@ -594,12 +620,12 @@
             );
         };
 
-        const DeleteConfirmModal = ({ onConfirm, onCancel, eventName }) => {
+        const ConfirmationModal = ({ onConfirm, onCancel, title, message }) => {
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onCancel}>
                     <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
-                        <h2 className="text-2xl font-bold mb-2">Delete Event</h2>
-                        <p className="text-gray-600 mb-6">Are you sure you want to permanently delete "{eventName}" and all its data? This action cannot be undone.</p>
+                        <h2 className="text-2xl font-bold mb-2">{title}</h2>
+                        <p className="text-gray-600 mb-6">{message}</p>
                         <div className="flex justify-end gap-3">
                             <button onClick={onCancel} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Cancel</button>
                             <button onClick={onConfirm} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">Delete</button>
@@ -615,7 +641,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('service-worker.js').catch(err => console.error('SW registration failed:', err));
+                navigator.serviceWorker.register('./service-worker.js').catch(err => console.error('SW registration failed:', err));
             });
         }
     </script>

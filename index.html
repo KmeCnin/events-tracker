@@ -96,8 +96,17 @@
         // --- Main App Component ---
         const App = () => {
             const [data, setData] = useState(getInitialData);
-            const [view, setView] = useState({ screen: 'home' });
+            const [route, setRoute] = useState(window.location.hash);
             const [newEventName, setNewEventName] = useState('');
+
+            // Effect to handle URL hash changes for routing
+            useEffect(() => {
+                const handleHashChange = () => {
+                    setRoute(window.location.hash);
+                };
+                window.addEventListener('hashchange', handleHashChange);
+                return () => window.removeEventListener('hashchange', handleHashChange);
+            }, []);
 
             // This effect runs once on app load to handle any shortcut actions
             useEffect(() => {
@@ -106,26 +115,19 @@
                 const eventId = parseInt(urlParams.get('event'), 10);
 
                 if (action === 'increment' && eventId) {
-                    // Find the event and add an increment
                     setData(prevData => {
                         const incrementsForEvent = prevData.increments[eventId] || [];
                         const newIncrements = [...incrementsForEvent, { id: Date.now(), timestamp: Date.now() }];
                         const newData = {
                             ...prevData,
-                            increments: {
-                                ...prevData.increments,
-                                [eventId]: newIncrements
-                            }
+                            increments: { ...prevData.increments, [eventId]: newIncrements }
                         };
-                        saveData(newData); // Save immediately
+                        saveData(newData);
                         return newData;
                     });
-                    
-                    // Clean the URL so a refresh doesn't trigger it again
                     window.history.replaceState({}, document.title, window.location.pathname);
                 }
             }, []);
-
 
             useEffect(() => { saveData(data); }, [data]);
 
@@ -155,49 +157,65 @@
                     delete newIncrements[eventId];
                     return { events: newEvents, increments: newIncrements };
                 });
-                setView({ screen: 'home' });
+                window.location.hash = ''; // Go back to home after delete
             };
 
-            const selectedEvent = view.screen === 'detail' ? data.events.find(e => e.id === view.eventId) : null;
+            // --- Routing Logic ---
+            let currentView;
+            const routeParts = route.replace(/^#\/?|\/$/g, '').split('/');
+            
+            if (routeParts[0] === 'event' && routeParts[1]) {
+                const eventId = parseInt(routeParts[1], 10);
+                const selectedEvent = data.events.find(e => e.id === eventId);
+                if (selectedEvent) {
+                    currentView = (
+                        <EventDetail
+                            event={selectedEvent}
+                            increments={data.increments[selectedEvent.id] || []}
+                            onUpdate={(newIncrements) => updateEventData(selectedEvent.id, newIncrements)}
+                            onDelete={() => deleteEvent(selectedEvent.id)}
+                            onBack={() => window.location.hash = ''}
+                        />
+                    );
+                } else {
+                    // Event not found, redirect to home
+                    window.location.hash = '';
+                }
+            } else {
+                currentView = (
+                    <div>
+                        <header className="mb-6">
+                            <h1 className="text-4xl font-bold text-gray-800">Event Tracker</h1>
+                            <p className="text-gray-500">A simple PWA to track your habits.</p>
+                        </header>
+                        <form onSubmit={(e) => { e.preventDefault(); handleAddEvent(); }} className="flex gap-2 mb-6">
+                            <input
+                                type="text" value={newEventName} onChange={(e) => setNewEventName(e.target.value)}
+                                placeholder="Add a new event..."
+                                className="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none"
+                            />
+                            <button type="submit" className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors">Add</button>
+                        </form>
+                        {data.events.length > 0 ? (
+                            <div className="space-y-4">
+                                {data.events.map(event => (
+                                    <EventCard
+                                        key={event.id} event={event} increments={data.increments[event.id] || []}
+                                        onUpdate={(newIncrements) => updateEventData(event.id, newIncrements)}
+                                        onSelect={() => window.location.hash = `/event/${event.id}`}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-10 px-6 bg-white rounded-lg shadow"><p className="text-gray-500">No events yet. Add one to get started!</p></div>
+                        )}
+                    </div>
+                );
+            }
 
             return (
                 <div className="max-w-4xl mx-auto p-4 md:p-6">
-                    {view.screen === 'home' ? (
-                        <div>
-                            <header className="mb-6">
-                                <h1 className="text-4xl font-bold text-gray-800">Event Tracker</h1>
-                                <p className="text-gray-500">A simple PWA to track your habits.</p>
-                            </header>
-                            <form onSubmit={(e) => { e.preventDefault(); handleAddEvent(); }} className="flex gap-2 mb-6">
-                                <input
-                                    type="text" value={newEventName} onChange={(e) => setNewEventName(e.target.value)}
-                                    placeholder="Add a new event..."
-                                    className="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none"
-                                />
-                                <button type="submit" className="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors">Add</button>
-                            </form>
-                            {data.events.length > 0 ? (
-                                <div className="space-y-4">
-                                    {data.events.map(event => (
-                                        <EventCard
-                                            key={event.id} event={event} increments={data.increments[event.id] || []}
-                                            onUpdate={(newIncrements) => updateEventData(event.id, newIncrements)}
-                                            onSelect={() => setView({ screen: 'detail', eventId: event.id })}
-                                        />
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-10 px-6 bg-white rounded-lg shadow"><p className="text-gray-500">No events yet. Add one to get started!</p></div>
-                            )}
-                        </div>
-                    ) : (
-                        <EventDetail
-                            event={selectedEvent} increments={data.increments[selectedEvent.id] || []}
-                            onUpdate={(newIncrements) => updateEventData(selectedEvent.id, newIncrements)}
-                            onDelete={() => deleteEvent(selectedEvent.id)}
-                            onBack={() => setView({ screen: 'home' })}
-                        />
-                    )}
+                    {currentView}
                 </div>
             );
         };
@@ -296,7 +314,7 @@
             return (
                 <div className="bg-white p-6 rounded-lg shadow-lg">
                     <div className="flex justify-between items-center mb-4">
-                        <button onClick={onBack} className="text-green-600 hover:underline">&larr; Back</button>
+                        <a href="#" onClick={onBack} className="text-green-600 hover:underline">&larr; Back</a>
                         <button onClick={() => setDeleteModalOpen(true)} className="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600">Delete Event</button>
                     </div>
                     <h1 className="text-4xl font-bold text-gray-800">{event.name}</h1>

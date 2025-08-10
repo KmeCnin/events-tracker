@@ -1,21 +1,11 @@
 {
   "short_name": "EventTracker",
-  "name": "Event Tracker PWA",
+  "name": "Tracker",
   "icons": [
     {
       "src": "favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
-    },
-    {
-      "src": "icon-192x192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "icon-512x512.png",
-      "type": "image/png",
-      "sizes": "512x512"
     }
   ],
   "start_url": ".",
